@@ -3,7 +3,7 @@ pragma solidity ^0.8.13;
 
 library Address {
     // 地址，是否合约。
-    function isContract(address addr) public returns (bool) {
+    function isContract(address addr) public view returns (bool) {
         uint256 size;
         // 取代码size。
         assembly {
@@ -23,7 +23,7 @@ library Address {
         bool success,
         bytes memory returnData,
         string memory errMsg
-    ) private returns (bytes memory) {
+    ) private pure returns (bytes memory) {
         if (success) {
             return returnData;
         }
