@@ -62,4 +62,32 @@ library SafeERC20 {
             abi.encodeWithSelector(token.approve.selector, spender, amount)
         );
     }
+
+    // 授权。增加额度。
+    function safeIncreaseAllowance(
+        IERC20 token,
+        address spender,
+        uint256 amount
+    ) public {
+        uint256 newAmount = IERC20(token).allowance(address(this), spender) +
+            amount;
+        _callOptionalReturn(
+            token,
+            abi.encodeWithSelector(token.approve.selector, spender, newAmount)
+        );
+    }
+
+    // 授权。减少额度。
+    function safeDecreaseAllowance(
+        IERC20 token,
+        address spender,
+        uint256 amount
+    ) public {
+        uint256 newAmount = IERC20(token).allowance(address(this), spender) -
+            amount;
+        _callOptionalReturn(
+            token,
+            abi.encodeWithSelector(token.approve.selector, spender, newAmount)
+        );
+    }
 }
