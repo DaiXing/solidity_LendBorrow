@@ -63,7 +63,7 @@ library Address {
         address target,
         bytes memory data,
         string memory errMsg
-    ) internal returns (bytes memory) {
+    ) internal view returns (bytes memory) {
         require(isContract(target), "target is not contract ");
 
         (bool success, bytes memory returnData) = target.staticcall(data);
@@ -74,7 +74,7 @@ library Address {
     function functionStaticCall(
         address target,
         bytes memory data
-    ) internal returns (bytes memory) {
+    ) internal view returns (bytes memory) {
         return functionStaticCall(target, data, "functionStaticCall fail");
     }
 
