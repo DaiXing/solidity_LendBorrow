@@ -49,4 +49,82 @@ library Address {
         (bool success, bytes memory returnData) = target.delegatecall(data);
         return _verifyCallResult(success, returnData, errMsg);
     }
+
+    // 代理调用。
+    function functionDelegateCall(
+        address target,
+        bytes memory data
+    ) internal returns (bytes memory) {
+        return functionDelegateCall(target, data, "functionDelegateCall fail");
+    }
+
+    // 静态调用。
+    function functionStaticCall(
+        address target,
+        bytes memory data,
+        string memory errMsg
+    ) internal returns (bytes memory) {
+        require(isContract(target), "target is not contract ");
+
+        (bool success, bytes memory returnData) = target.staticcall(data);
+        return _verifyCallResult(success, returnData, errMsg);
+    }
+
+    // 静态调用。
+    function functionStaticCall(
+        address target,
+        bytes memory data
+    ) internal returns (bytes memory) {
+        return functionStaticCall(target, data, "functionStaticCall fail");
+    }
+
+    // 普通调用。带上eth
+    function functionCallWithValue(
+        address target,
+        bytes memory data,
+        uint256 value,
+        string memory errMsg
+    ) internal returns (bytes memory) {
+        require(isContract(target), "target is not contract ");
+        require(value > 0, "value invalid");
+
+        (bool success, bytes memory returnData) = target.call{value: value}(
+            data
+        );
+        return _verifyCallResult(success, returnData, errMsg);
+    }
+
+    // 普通调用。带上eth
+    function functionCallWithValue(
+        address target,
+        bytes memory data,
+        uint256 value
+    ) internal returns (bytes memory) {
+        return
+            functionCallWithValue(
+                target,
+                data,
+                value,
+                "functionCallWithValue fail"
+            );
+    }
+
+    // 普通调用。不带eth
+    function functionCall(
+        address target,
+        bytes memory data,
+        string memory errMsg
+    ) internal returns (bytes memory) {
+        // value 填 0
+        return functionCallWithValue(target, data, 0, errMsg);
+    }
+
+    // 普通调用。不带eth
+    function functionCall(
+        address target,
+        bytes memory data
+    ) internal returns (bytes memory) {
+        // value 填 0
+        return functionCallWithValue(target, data, 0, "functionCall fail");
+    }
 }
