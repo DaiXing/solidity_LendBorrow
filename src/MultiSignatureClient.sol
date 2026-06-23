@@ -11,13 +11,17 @@ interface IMultiSignature {
 }
 
 contract MultiSignatureClient {
+    // 字段key。
     uint256 private constant multiSignaturePosition =
         uint256(keccak256("org.multiSignature.storage"));
     uint256 private constant defaultIndex = 0;
 
+    // 传入一个子类地址。
     constructor(address multiSignature) public {
         require(multiSignature != address(0), "multiSignature invalid ");
-        saveValue(multiSignaturePosition, uint256(multiSignature));
+
+        // 保存地址。
+        saveValue(multiSignaturePosition, uint256(uint160(multiSignature)));
     }
 
     // 写值
