@@ -13,6 +13,7 @@ exclude_lints = [
     "unused-var",
     "unaliased-plain-import",
     "asm-keccak256",
+    "screaming-snake-case-const",
     "screaming-snake-case-immutable",
 ] # 保留重要的安全/风格检查，只忽略烦人的次要警告
 

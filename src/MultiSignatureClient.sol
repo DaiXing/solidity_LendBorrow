@@ -40,7 +40,7 @@ contract MultiSignatureClient {
     }
 
     function getMultiSignatureAddress() public returns (address) {
-        return address(getValue(multiSignaturePosition));
+        return address(uint160(getValue(multiSignaturePosition)));
     }
 
     // 校验多签。

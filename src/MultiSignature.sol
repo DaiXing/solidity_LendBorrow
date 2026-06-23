@@ -104,7 +104,7 @@ contract MultiSignature is MultiSignatureClient {
     // 撤销一个申请。
     event RevokeApplication(
         address indexed from,
-        bytes indexed msghash,
+        bytes32 indexed msghash,
         uint256 index
     );
 
