@@ -68,7 +68,7 @@ contract MultiSignatureClient {
         require(newIndex > defaultIndex, "TX is not approved");
     }
 
-    // 调用是有效的。
+    // 调用是有效的。 验证多个签名。
     modifier validCall() {
         checkMultiSignature();
         _;
