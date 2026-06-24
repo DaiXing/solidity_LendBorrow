@@ -6,7 +6,7 @@ import "./SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-library SafeTransfer {
+contract SafeTransfer {
     using SafeERC20 for IERC20;
 
     // 兑换。赎回。
@@ -16,7 +16,8 @@ library SafeTransfer {
         uint256 amount
     );
 
-    // 把钱转到池子。
+    // 池子，可以存 ETH，也可以存 ERC20
+    // 把钱转到池子。 ETH ERC20
     function getPayableAmount(
         address token,
         uint256 amount
