@@ -33,15 +33,15 @@ contract SafeTransfer {
         return amount;
     }
 
-    // 赎回。 把钱转给某人。
+    // 赎回。 把钱转给某人。 ETH ERC20
     function _redeem(
-        address payable recipientor,
+        address recipientor,
         address token,
         uint256 amount
     ) internal {
         // 转出 eth
         if (token == address(0)) {
-            recipientor.transfer(amount);
+            payable(recipientor).transfer(amount);
         } else {
             // token 需要转。
             IERC20(token).safeTransfer(recipientor, amount);

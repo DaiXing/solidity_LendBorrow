@@ -199,7 +199,14 @@ contract Pool is
     function depositLend(
         uint256 poolId,
         uint256 stakeAmount
-    ) public payable whenNotPaused nonReentrant {
+    )
+        public
+        payable
+        whenNotPaused
+        nonReentrant
+        timeBefore(poolId)
+        stateMatch(poolId)
+    {
         PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
         PoolDataInfo storage poolData = poolDataInfo[poolId];
         LendInfo storage lendInfo = userLendInfo[msg.sender][poolId];
@@ -232,5 +239,47 @@ contract Pool is
         );
     }
 
-    function refundLend() public {}
+    // 用户，贷款。退款。
+    function refundLend(
+        uint256 poolId
+    )
+        public
+        whenNotPaused
+        nonReentrant
+        timeAfter(poolId)
+        stateNotMatchUndone(poolId)
+    {
+        PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
+        PoolDataInfo storage poolData = poolDataInfo[poolId];
+        LendInfo storage lendInfo = userLendInfo[msg.sender][poolId];
+
+        require(lendInfo.stakeAmount > 0, "stakeAmount is zero");
+        // 池子还有未退款的金额
+        require(
+            poolBase.lendSupply > poolData.settleAmountLend,
+            "no refund amount "
+        );
+        // 不能重复退款。
+        require(!lendInfo.hasNoRefund, "refund repeat");
+
+        // 用户占比 = 用户金额 / 总金额
+        uint256 userShare = (lendInfo.stakeAmount * calDecimal) /
+            poolBase.lendSupply;
+
+        // 剩余lend金额。
+        uint256 leftLendAmount = poolBase.lendSupply -
+            poolData.settleAmountLend;
+
+        // 用户金额 = 剩余lend金额 * 用户占比
+        uint256 refundAmount = (leftLendAmount * userShare) / calDecimal;
+
+        // 转给用户。 ETH ERC20
+        _redeem(msg.sender, poolBase.lendToken, refundAmount);
+
+        // 只能退款1次
+        lendInfo.hasNoRefund = true;
+        lendInfo.refundAmount += refundAmount;
+
+        emit RefundLend(msg.sender, poolBase.lendToken, refundAmount);
+    }
 }
