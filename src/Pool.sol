@@ -603,6 +603,24 @@ contract Pool is
         );
     }
 
+    // 获得最新的预言机价格。 2种 token 价格。
+    function getUnderlyingPriceView(
+        uint256 poolId
+    ) public returns (uint256[2] memory) {
+        prices = new uint256[](2);
+
+        PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
+
+        // 批量查token 价格。
+        uint256[] memory assets = new uint256[](2);
+        assets[0] = uint256(uint160(poolBase.lendToken));
+        assets[1] = uint256(uint160(poolBase.borrowToken));
+
+        uint256[] memory prices = oracle.getPrices(assets);
+
+        return (prices[0], prices[1]);
+    }
+
     // 能否结算。 结算时间到了。
     function checkoutSettle(uint256 poolId) public returns (bool) {
         return poolBaseInfo[poolId].settleTime < block.timestamp;
@@ -616,6 +634,52 @@ contract Pool is
         require(checkoutSettle(poolId), "not settle time ");
 
         // 贷款金额，保证金，都大于 0  。
-        if (poolBase.lendSupply > 0 && poolBase.borrowSupply > 0) {}
+        if (poolBase.lendSupply > 0 && poolBase.borrowSupply > 0) {
+            // 查价格。
+            uint256[2] memory prices = getUnderlyingPriceView(poolId);
+            uint256 lendPrice = prices[0];
+            uint256 borrowPrice = prices[1];
+
+            // 保证金价值 = 保证金数量 * 保证金价格。
+            // todo 为啥 borrowPrice/lendPrice ?
+            uint256 borrowValue = (poolBase.borrowSupply *
+                ((borrowPrice * calDecimal) / lendPrice)) / calDecimal;
+
+            // 稳定币价值
+            // todo 为啥 这样算？
+            uint256 actualValue = (borrowValue * baseDecimal) /
+                poolBase.martgageRate;
+
+            // 贷款 > 借款
+            if (poolBase.lendSupply > actualValue) {
+                // todo 为啥这样设置 ？
+                poolData.settleAmountLend = actualValue;
+                poolData.settleAmountBorrow = poolBase.borrowSupply;
+            }
+            // 贷款 < 借款
+            else {
+                poolData.settleAmountLend = poolBase.lendSupply;
+                poolData.settleAmountBorrow =
+                    (poolBase.lendSupply * poolBase.martgageRate) /
+                    ((borrowPrice * baseDecimal) / lendPrice);
+            }
+
+            // 改状态。
+            poolBase.state = PoolState.EXECUTION;
+        }
+        // 异常情况。
+        else {
+            // 改状态。
+            poolBase.state = PoolState.UNDONE;
+
+            poolData.settleAmountLend = poolBase.lendSupply;
+            poolData.settleAmountBorrow = poolBase.borrowSupply;
+        }
+
+        emit StateChange(
+            poolId,
+            uint256(PoolState.MATCH),
+            uint256(poolBase.state)
+        );
     }
 }
