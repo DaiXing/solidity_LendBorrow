@@ -239,7 +239,7 @@ contract Pool is
         );
     }
 
-    // 用户，借款。存入。 ETH 或 ERC20
+    // 用户，借款人。存入保证金。 ETH 或 ERC20
     // 存入抵押品，才能借款。
     function depositBorrow(
         uint256 poolId,
@@ -323,6 +323,61 @@ contract Pool is
         _redeem(msg.sender, poolBase.lendToken, userAmount);
 
         emit WithdrawLend(msg.sender, poolBase.lendToken, userAmount, amount);
+    }
+
+    // 取款。借款人，拿回保证金。
+    // 结束后才能。
+    function withdrawBorrow(
+        uint256 poolId,
+        uint256 jpAmount
+    ) external whenNotPaused nonReentrant stateFinishLiquidation(poolId) {
+        PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
+        PoolDataInfo storage poolData = poolDataInfo[poolId];
+        BorrowInfo storage borrowInfo = userBorrowInfo[msg.sender][poolId];
+
+        require(jpAmount > 0, "jpAmount invalid");
+
+        // 销毁。
+        poolBase.jpCoin.burn(msg.sender, jpAmount);
+
+        // jp token 数量。
+        uint256 totalJpAmount = (poolData.settleAmountLend *
+            poolBase.martgageRate) / baseDecimal;
+
+        // 用户的比例。
+        uint256 jpShare = (jpAmount * calDecimal) / totalJpAmount;
+
+        // 用户的金额。
+        uint256 userAmount = 0;
+        // 完成
+        if (poolBase.state == PoolState.FINISH) {
+            // 时间到了。
+            require(poolBase.endTime < block.timestamp, "endTime not match ");
+            // 用户的金额。
+            userAmount = (jpShare * poolData.finishAmountBorrow) / calDecimal;
+        }
+        // 清算。
+        else if (poolBase.state == PoolState.LIQUIDATION) {
+            // 时间到了。
+            require(
+                poolBase.settleTime < block.timestamp,
+                "settleTime not match "
+            );
+            // 用户的金额。
+            userAmount =
+                (jpShare * poolData.liquidationAmountBorrow) /
+                calDecimal;
+        }
+
+        // 转账。
+        _redeem(msg.sender, poolBase.borrowToken, userAmount);
+
+        emit WithdrawBorrow(
+            msg.sender,
+            poolBase.borrowToken,
+            jpAmount,
+            userAmount
+        );
     }
 
     // 用户，贷款。退款。
@@ -449,6 +504,51 @@ contract Pool is
 
         // todo 这里不是 lendToken ？
         emit ClaimLend(msg.sender, poolBase.borrowToken, userAmount);
+    }
+
+    // 领取 spToken
+    // 只能领取1次。
+    function claimBorrow(
+        uint256 poolId
+    )
+        public
+        whenNotPaused
+        nonReentrant
+        timeAfter(poolId)
+        stateNotMatchUndone(poolId)
+    {
+        PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
+        PoolDataInfo storage poolData = poolDataInfo[poolId];
+        BorrowInfo storage borrowInfo = userBorrowInfo[msg.sender][poolId];
+
+        require(borrowInfo.stakeAmount > 0, "stakeAmount invalid");
+        //只能领取1次。
+        require(!borrowInfo.hasNoClaim, "hasNoClaim");
+
+        // jp token 数量。
+        uint256 totalJpAmount = (poolData.settleAmountLend *
+            poolBase.martgageRate) / baseDecimal;
+
+        // 用户的比例。
+        uint256 userShare = (borrowInfo.stakeAmount * calDecimal) /
+            poolBase.borrowSupply;
+
+        // 用户的数量。
+        uint256 jpAmount = (userShare * totalJpAmount) / calDecimal;
+
+        // 给用户新的token。
+        poolBase.jpCoin.mint(msg.sender, jpAmount);
+
+        // todo 为什么用 settleAmountLend lendToken ？
+        uint256 borrowAmount = (userShare * poolData.settleAmountLend) /
+            calDecimal;
+        _redeem(msg.sender, poolBase.lendToken, borrowAmount);
+
+        // 只能领取1次。
+        borrowInfo.hasNoClaim = true;
+
+        // todo 这里是 borrowToken ？ 前面为啥是 lend ？
+        emit ClaimBorrow(msg.sender, poolBase.borrowToken, jpAmount);
     }
 
     // 取款。紧急。 状态是未完成。
