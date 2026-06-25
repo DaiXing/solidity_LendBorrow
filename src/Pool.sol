@@ -576,4 +576,46 @@ contract Pool is
             lendInfo.stakeAmount
         );
     }
+
+    // 取款。紧急。 状态是未完成。
+    function emergencyBorrowWithdrawal(
+        uint256 poolId
+    ) external whenNotPaused nonReentrant stateUndone(poolId) {
+        PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
+        PoolDataInfo storage poolData = poolDataInfo[poolId];
+        BorrowInfo storage borrowInfo = userBorrowInfo[msg.sender][poolId];
+
+        require(poolBase.borrowSupply > 0, "borrowSupply invalid");
+        require(borrowInfo.stakeAmount > 0, "stakeAmount invalid");
+        // 没有退款。
+        require(!borrowInfo.hasNoRefund, "hasNoRefund");
+
+        // 转账。
+        _redeem(msg.sender, poolBase.borrowToken, borrowInfo.stakeAmount);
+
+        // 没有退款了。
+        borrowInfo.hasNoRefund = true;
+
+        emit EmergencyBorrowWithdrawal(
+            msg.sender,
+            poolBase.borrowToken,
+            borrowInfo.stakeAmount
+        );
+    }
+
+    // 能否结算。 结算时间到了。
+    function checkoutSettle(uint256 poolId) public returns (bool) {
+        return poolBaseInfo[poolId].settleTime < block.timestamp;
+    }
+
+    // 结算。
+    function settle(uint256 poolId) public validCall stateMatch(poolId) {
+        PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
+        PoolDataInfo storage poolData = poolDataInfo[poolId];
+
+        require(checkoutSettle(poolId), "not settle time ");
+
+        // 贷款金额，保证金，都大于 0  。
+        if (poolBase.lendSupply > 0 && poolBase.borrowSupply > 0) {}
+    }
 }
