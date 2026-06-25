@@ -239,7 +239,94 @@ contract Pool is
         );
     }
 
+    // 用户，借款。存入。 ETH 或 ERC20
+    // 存入抵押品，才能借款。
+    function depositBorrow(
+        uint256 poolId,
+        uint256 stakeAmount
+    )
+        public
+        payable
+        whenNotPaused
+        nonReentrant
+        timeBefore(poolId)
+        stateMatch(poolId)
+    {
+        PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
+        PoolDataInfo storage poolData = poolDataInfo[poolId];
+        BorrowInfo storage borrowInfo = userBorrowInfo[msg.sender][poolId];
+
+        // todo 借款人，为啥要给合约？
+        // 用户存入抵押品，才能借款。 抵押品价值 > 借款金额（通常超额抵押 150%+）
+        // 接收用户的金额。 ETH 或 ERC20
+        uint256 amount = getPayableAmount(poolBase.borrowToken, stakeAmount);
+        require(amount > 0, "amount is zero");
+
+        borrowInfo.hasNoRefund = false;
+        borrowInfo.hasNoClaim = false;
+
+        // ETH 或 ERC20
+        uint256 realAmount = (poolBase.borrowToken == address(0))
+            ? msg.value
+            : stakeAmount;
+        borrowInfo.stakeAmount += realAmount;
+        poolBase.borrowSupply += realAmount;
+
+        emit DepositBorrow(
+            msg.sender,
+            poolBase.borrowToken,
+            stakeAmount,
+            realAmount
+        );
+    }
+
+    // 取款。本金，利息
+    // 结束后才能。
+    function withdrawLend(
+        uint256 poolId,
+        uint256 amount
+    ) external whenNotPaused nonReentrant stateFinishLiquidation(poolId) {
+        PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
+        PoolDataInfo storage poolData = poolDataInfo[poolId];
+        LendInfo storage lendInfo = userLendInfo[msg.sender][poolId];
+
+        require(amount > 0, "amount invalid");
+
+        // 销毁。
+        poolBase.spCoin.burn(msg.sender, amount);
+
+        // 用户的比例。
+        uint256 userShare = (amount * calDecimal) / poolData.settleAmountLend;
+        // 用户的金额。
+        uint256 userAmount = 0;
+        // 完成
+        if (poolBase.state == PoolState.FINISH) {
+            // 时间到了。
+            require(poolBase.endTime < block.timestamp, "endTime not match ");
+            // 用户的金额。
+            userAmount = (userShare * poolData.finishAmountLend) / calDecimal;
+        }
+        // 清算。
+        else if (poolBase.state == PoolState.LIQUIDATION) {
+            // 时间到了。
+            require(
+                poolBase.settleTime < block.timestamp,
+                "settleTime not match "
+            );
+            // 用户的金额。
+            userAmount =
+                (userShare * poolData.liquidationAmountLend) /
+                calDecimal;
+        }
+
+        // 转账。
+        _redeem(msg.sender, poolBase.lendToken, userAmount);
+
+        emit WithdrawLend(msg.sender, poolBase.lendToken, userAmount, amount);
+    }
+
     // 用户，贷款。退款。
+    // todo 只能退1次？
     function refundLend(
         uint256 poolId
     )
@@ -281,5 +368,112 @@ contract Pool is
         lendInfo.refundAmount += refundAmount;
 
         emit RefundLend(msg.sender, poolBase.lendToken, refundAmount);
+    }
+
+    // 用户，借款。退款。
+    // todo 只能退1次？
+    function refundBorrow(
+        uint256 poolId
+    )
+        public
+        whenNotPaused
+        nonReentrant
+        timeAfter(poolId)
+        stateNotMatchUndone(poolId)
+    {
+        PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
+        PoolDataInfo storage poolData = poolDataInfo[poolId];
+        BorrowInfo storage borrowInfo = userBorrowInfo[msg.sender][poolId];
+
+        require(
+            poolBase.borrowSupply > poolData.settleAmountBorrow,
+            "amount not match"
+        );
+        require(borrowInfo.stakeAmount > 0, "stakeAmount is zero");
+        // 不能重复退款。
+        require(!borrowInfo.hasNoRefund, "refund repeat");
+
+        // 用户占比 = 用户金额 / 总金额
+        uint256 userShare = (borrowInfo.stakeAmount * calDecimal) /
+            poolBase.borrowSupply;
+
+        // 剩余lend金额。
+        uint256 leftAmount = poolBase.borrowSupply -
+            poolData.settleAmountBorrow;
+
+        // 用户金额 = 剩余lend金额 * 用户占比
+        uint256 refundAmount = (leftAmount * userShare) / calDecimal;
+
+        // 转给用户。 ETH ERC20
+        _redeem(msg.sender, poolBase.borrowToken, refundAmount);
+
+        // 只能退款1次
+        borrowInfo.hasNoRefund = true;
+        borrowInfo.refundAmount += refundAmount;
+
+        emit RefundBorrow(msg.sender, poolBase.borrowToken, refundAmount);
+    }
+
+    // 领取 spToken
+    // 只能领取1次。
+    function claimLend(
+        uint256 poolId
+    )
+        public
+        whenNotPaused
+        nonReentrant
+        timeAfter(poolId)
+        stateNotMatchUndone(poolId)
+    {
+        PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
+        PoolDataInfo storage poolData = poolDataInfo[poolId];
+        LendInfo storage lendInfo = userLendInfo[msg.sender][poolId];
+
+        require(lendInfo.stakeAmount > 0, "stakeAmount invalid");
+        //只能领取1次。
+        require(!lendInfo.hasNoClaim, "hasNoClaim");
+
+        // 用户的比例。
+        uint256 userShare = (lendInfo.stakeAmount * calDecimal) /
+            poolBase.lendSupply;
+
+        // 用户的数量。
+        uint256 userAmount = (userShare * poolData.settleAmountLend) /
+            calDecimal;
+
+        // 给用户新的token。
+        poolBase.spCoin.mint(msg.sender, userAmount);
+
+        // 只能领取1次。
+        lendInfo.hasNoClaim = true;
+
+        // todo 这里不是 lendToken ？
+        emit ClaimLend(msg.sender, poolBase.borrowToken, userAmount);
+    }
+
+    // 取款。紧急。 状态是未完成。
+    function emergencyLendWithdrawal(
+        uint256 poolId
+    ) external whenNotPaused nonReentrant stateUndone(poolId) {
+        PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
+        PoolDataInfo storage poolData = poolDataInfo[poolId];
+        LendInfo storage lendInfo = userLendInfo[msg.sender][poolId];
+
+        require(poolBase.lendSupply > 0, "lendSupply invalid");
+        require(lendInfo.stakeAmount > 0, "stakeAmount invalid");
+        // 没有退款。
+        require(!lendInfo.hasNoRefund, "hasNoRefund");
+
+        // 转账。
+        _redeem(msg.sender, poolBase.lendToken, lendInfo.stakeAmount);
+
+        // 没有退款了。
+        lendInfo.hasNoRefund = true;
+
+        emit EmergencyLendWithdrawal(
+            msg.sender,
+            poolBase.lendToken,
+            lendInfo.stakeAmount
+        );
     }
 }

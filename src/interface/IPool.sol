@@ -19,8 +19,8 @@ interface IPool {
         uint256 endTime; // 结束时间
         uint256 interestRate; // 利率。费率。 单位 1e8
         uint256 maxSupply; // 最大供应量
-        uint256 lendSupply; // 贷款人的供应量
-        uint256 borrowSupply; // 借款人的供应量
+        uint256 lendSupply; // 贷款人的供应量。
+        uint256 borrowSupply; // 借款人的供应量。抵押品。存入抵押品，才能拿到借款。
         uint256 martgageRate; // 抵押率。 单位 1e8
         address lendToken; // 贷款方的token地址
         address borrowToken; // 借款方的token地址
