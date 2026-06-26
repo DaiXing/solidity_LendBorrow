@@ -606,7 +606,7 @@ contract Pool is
     // 获得最新的预言机价格。 2种 token 价格。
     function getUnderlyingPriceView(
         uint256 poolId
-    ) public returns (uint256[2] memory prices) {
+    ) public returns (uint256[2] memory) {
         PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
 
         // 批量查token 价格。

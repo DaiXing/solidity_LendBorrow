@@ -27,6 +27,21 @@ contract Oracle is MultiSignatureClient, IOracle {
         decimals = _decimal;
     }
 
+    function getPrice(address asset) public view returns (uint256) {
+        return getUnderlyingPrice(uint256(uint160(asset)));
+    }
+
+    function getPrices(
+        uint256[] calldata assets
+    ) public view returns (uint256[] memory) {
+        uint256 len = assets.length;
+        uint256[] memory prices = new uint256[](2);
+        for (uint256 k = 0; k < len; k++) {
+            prices[k] = getUnderlyingPrice(assets[k]);
+        }
+        return prices;
+    }
+
     // 批量，给资产设置价格。
     function setPrices(
         uint256[] memory assets, // 资产地址
@@ -43,7 +58,7 @@ contract Oracle is MultiSignatureClient, IOracle {
     // 基础价格。
     function getUnderlyingPrice(
         uint256 underlying
-    ) external view returns (uint256) {
+    ) public view returns (uint256) {
         // 查询外部价格。
         AggregatorV3Interface agg = assetsMap[underlying];
 
