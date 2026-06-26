@@ -320,6 +320,7 @@ contract Pool is
         }
 
         // 转账。
+        // 借款人，取回钱。
         _redeem(msg.sender, poolBase.lendToken, userAmount);
 
         emit WithdrawLend(msg.sender, poolBase.lendToken, userAmount, amount);
@@ -537,11 +538,15 @@ contract Pool is
         uint256 jpAmount = (userShare * totalJpAmount) / calDecimal;
 
         // 给用户新的token。
+        // todo jpToken 是什么
         poolBase.jpCoin.mint(msg.sender, jpAmount);
 
         // todo 为什么用 settleAmountLend lendToken ？
         uint256 borrowAmount = (userShare * poolData.settleAmountLend) /
             calDecimal;
+
+        // todo 核心逻辑： 贷款人，把钱存入 lendToken 。借款人，从 lendToken 获得钱。
+        // todo 结算后，借款人才能拿到借款？
         _redeem(msg.sender, poolBase.lendToken, borrowAmount);
 
         // 只能领取1次。
@@ -619,7 +624,7 @@ contract Pool is
     }
 
     // 能否结算。 结算时间到了。
-    function checkoutSettle(uint256 poolId) public returns (bool) {
+    function checkoutSettle(uint256 poolId) public view returns (bool) {
         return poolBaseInfo[poolId].settleTime < block.timestamp;
     }
 
