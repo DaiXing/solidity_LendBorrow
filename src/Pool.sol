@@ -470,8 +470,8 @@ contract Pool is
         emit RefundBorrow(msg.sender, poolBase.borrowToken, refundAmount);
     }
 
-    // 领取 spToken
-    // 只能领取1次。
+    // 贷款人。
+    // 领取 spToken 。只能领取1次。
     function claimLend(
         uint256 poolId
     )
@@ -497,7 +497,7 @@ contract Pool is
         uint256 userAmount = (userShare * poolData.settleAmountLend) /
             calDecimal;
 
-        // 给用户新的token。
+        // 贷款凭证。
         poolBase.spCoin.mint(msg.sender, userAmount);
 
         // 只能领取1次。
@@ -507,7 +507,7 @@ contract Pool is
         emit ClaimLend(msg.sender, poolBase.borrowToken, userAmount);
     }
 
-    // 领取 spToken
+    // 借款人。领取 lendToken spToken ，金钱、凭证。
     // 只能领取1次。
     function claimBorrow(
         uint256 poolId

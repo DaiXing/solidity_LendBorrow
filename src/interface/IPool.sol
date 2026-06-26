@@ -22,13 +22,14 @@ interface IPool {
         uint256 lendSupply; // 贷款人的供应量。
         uint256 borrowSupply; // 借款人的供应量。抵押品。存入抵押品，才能拿到借款。
         uint256 martgageRate; // 抵押率。 单位 1e8
-        address lendToken; // 贷款方的token地址
-        address borrowToken; // 借款方的token地址
+        address lendToken; // 贷款方的token地址。存借出、借入的钱。
+        address borrowToken; // 借款方的token地址。存保证金。
         PoolState state; // 状态
-        IDebtToken spCoin; // supply token。贷款人，获得存款凭证。
-        IDebtToken jpCoin; // jp token 的erc20地址。借款人，获得抵押凭证。
+        IDebtToken spCoin; // supply position token。贷款人，获得存款凭证。
+        IDebtToken jpCoin; // j      position token。借款人，获得抵押凭证。
         uint256 autoLiquidateThreshold; // 自动清算的阙值
     }
+
     // 池子的数据
     struct PoolDataInfo {
         uint256 settleAmountLend; // 结算时，实际贷款金额
