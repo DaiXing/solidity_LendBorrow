@@ -25,8 +25,8 @@ interface IPool {
         address lendToken; // 贷款方的token地址。存借出、借入的钱。
         address borrowToken; // 借款方的token地址。存保证金。
         PoolState state; // 状态
-        IDebtToken spCoin; // supply position token。贷款人，获得存款凭证。
-        IDebtToken jpCoin; // j      position token。借款人，获得抵押凭证。
+        IDebtToken spCoin; // Service Provider 。贷款人，获得存款凭证。
+        IDebtToken jpCoin; // Joint Party      。借款人，获得抵押凭证。
         uint256 autoLiquidateThreshold; // 自动清算的阙值
     }
 
