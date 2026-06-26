@@ -90,7 +90,7 @@ contract Pool is
     function setFeeAddress(address addr) public validCall {
         require(addr != address(0), "addr invalid");
         emit SetFeeAddress(feeAddress, addr);
-        feeAddress = addr;
+        feeAddress = payable(addr);
     }
 
     function setMinAmount(uint256 amount) public validCall {
@@ -606,9 +606,7 @@ contract Pool is
     // 获得最新的预言机价格。 2种 token 价格。
     function getUnderlyingPriceView(
         uint256 poolId
-    ) public returns (uint256[2] memory) {
-        prices = new uint256[](2);
-
+    ) public returns (uint256[2] memory prices) {
         PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
 
         // 批量查token 价格。
@@ -617,8 +615,7 @@ contract Pool is
         assets[1] = uint256(uint160(poolBase.borrowToken));
 
         uint256[] memory prices = oracle.getPrices(assets);
-
-        return (prices[0], prices[1]);
+        return [prices[0], prices[1]];
     }
 
     // 能否结算。 结算时间到了。
@@ -679,6 +676,283 @@ contract Pool is
         emit StateChange(
             poolId,
             uint256(PoolState.MATCH),
+            uint256(poolBase.state)
+        );
+    }
+
+    // 达到结束时间了。
+    function checkoutFinish(uint256 poolId) public returns (bool) {
+        return poolBaseInfo[poolId].endTime < block.timestamp;
+    }
+
+    // 结束。
+    function finish(uint256 poolId) public validCall {
+        PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
+        PoolDataInfo storage poolData = poolDataInfo[poolId];
+
+        require(checkoutFinish(poolId), "not finish time ");
+        require(poolBase.state == PoolState.EXECUTION, "state invalid");
+
+        address token0 = poolBase.borrowToken;
+        address token1 = poolBase.lendToken;
+
+        // 因为利率是年利率，所以要1年。
+        // 时间比例 = (结束时间 - 结算时间) / 1年
+        uint256 timeRatio = ((poolBase.endTime - poolBase.settleTime) *
+            baseDecimal) / baseYear;
+
+        // 利息 = 时间比例 * 年利率 * 结算贷款金额
+        // timeRatio interestRate 都是扩了 baseDecimal
+        uint256 interest = (timeRatio *
+            poolBase.interestRate *
+            poolData.settleAmountLend) /
+            baseDecimal /
+            baseDecimal;
+
+        // 贷款金额 = 结算贷款 + 利息
+        uint256 lendAmount = poolData.settleAmountLend + interest;
+
+        // lendFee 已经是乘以了 baseDecimal
+        // 销售金额 = 贷款金额 * (1+贷款费率)
+        uint256 sellAmount = (lendAmount * (lendFee + baseDecimal)) /
+            baseDecimal;
+
+        // 交换。
+        (uint256 amountSell, uint256 amountIn) = _sellExactAmount(
+            swapRouter,
+            token0,
+            token1,
+            sellAmount
+        );
+
+        require(amountIn >= lendAmount, "amountIn invalid");
+
+        // 贷款金额。
+        if (amountIn > lendAmount) {
+            uint256 feeAmount = amountIn - lendAmount;
+
+            // 贷款费。 手续费。
+            _redeem(feeAddress, poolBase.lendToken, feeAmount);
+
+            poolData.finishAmountLend = amountIn - feeAmount;
+        } else {
+            poolData.finishAmountLend = amountIn;
+        }
+
+        // 借款金额。
+        uint256 remainNowAmount = poolData.settleAmountBorrow - amountSell;
+        // 收取手续费。
+        uint256 remainBorrowAmount = redeemFees(
+            borrowFee, // 费率。
+            poolBase.borrowToken, // 保证金地址。
+            remainNowAmount
+        );
+        poolData.finishAmountBorrow = remainBorrowAmount;
+
+        // 状态。
+        poolBase.state = PoolState.FINISH;
+        emit StateChange(
+            poolId,
+            uint256(PoolState.EXECUTION),
+            uint256(poolBase.state)
+        );
+    }
+
+    // 赎回。 利息
+    function redeemFees(
+        uint256 feeRatio,
+        address token,
+        uint256 amount
+    ) internal returns (uint256) {
+        // 费用 = 金额 * 费率
+        uint256 fee = (amount * feeRatio) / baseDecimal;
+
+        // 赎回。 收取利息。
+        if (fee > 0) {
+            _redeem(feeAddress, token, fee);
+        }
+
+        // 剩余金额。
+        return amount - fee;
+    }
+
+    // 返回 address。
+    function _getSwapPath(
+        address _swapRouter,
+        address token0,
+        address token1
+    ) internal returns (address[] memory path) {
+        IUniswapV2Router2 swap = IUniswapV2Router2(_swapRouter);
+        path = new address[](2);
+        path[0] = token0 == address(0) ? swap.WETH() : token0;
+        path[1] = token1 == address(0) ? swap.WETH() : token1;
+    }
+
+    function _getAmountIn(
+        address _swapRouter,
+        address token0,
+        address token1,
+        uint256 amountOut
+    ) internal returns (uint256) {
+        address[] memory path = _getSwapPath(_swapRouter, token0, token1);
+        IUniswapV2Router2 swap = IUniswapV2Router2(_swapRouter);
+        uint256[] memory amounts = swap.getAmountsIn(amountOut, path);
+        return amounts[0];
+    }
+    function _safeApprove(address token, address to, uint256 value) internal {
+        (bool success, bytes memory data) = token.call(
+            abi.encodeWithSelector(0x095ea7b3, to, value)
+        );
+        require(
+            success && (data.length == 0 || abi.decode(data, (bool))),
+            "!safeApprove"
+        );
+    }
+    function _swap(
+        address _swapRouter,
+        address token0,
+        address token1,
+        uint256 amount0
+    ) internal returns (uint256) {
+        if (token0 != address(0)) {
+            _safeApprove(token0, _swapRouter, type(uint256).max);
+        }
+        if (token1 != address(0)) {
+            _safeApprove(token1, _swapRouter, type(uint256).max);
+        }
+        IUniswapV2Router2 swap = IUniswapV2Router2(_swapRouter);
+        address[] memory path = _getSwapPath(_swapRouter, token0, token1);
+        uint256[] memory amounts;
+
+        if (token0 == address(0)) {
+            // 用eth换token
+            amounts = swap.swapExactETHForTokens{value: amount0}(
+                0,
+                path,
+                address(this),
+                block.timestamp + 30
+            );
+        } else if (token1 == address(0)) {
+            // 用token换eth
+            amounts = swap.swapExactTokensForETH(
+                amount0,
+                0,
+                path,
+                address(this),
+                block.timestamp + 30
+            );
+        } else {
+            // 用token换token
+            amounts = swap.swapExactTokensForTokens(
+                amount0,
+                0,
+                path,
+                address(this),
+                block.timestamp + 30
+            );
+        }
+
+        // todo 最后的数量。
+        uint256 amountLast = amounts[amounts.length - 1];
+        emit Swap(token0, token1, amounts[0], amountLast);
+        return amountLast;
+    }
+    function _sellExactAmount(
+        address _swapRouter,
+        address token0,
+        address token1,
+        uint256 amountOut
+    ) internal returns (uint256, uint256) {
+        uint256 amountIn = _getAmountIn(_swapRouter, token0, token1, amountOut);
+        uint256 amountSell = amountOut > 0 ? amountIn : 0;
+        uint256 amount = _swap(_swapRouter, token0, token1, amountSell);
+        return (amountSell, amount);
+    }
+
+    // 检查需要清算。 保证金的当前价值，与清算阙值比较。
+    function checkoutLiquidate(uint256 poolId) public returns (bool) {
+        PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
+        PoolDataInfo storage poolData = poolDataInfo[poolId];
+
+        // 查价格。
+        uint256[2] memory prices = getUnderlyingPriceView(poolId);
+        uint256 priceLend = prices[0];
+        uint256 priceBorrow = prices[1];
+
+        // 保证金的价值。
+        // todo  为啥 priceBorrow / priceLend
+        uint256 borrowValueNow = (poolData.settleAmountBorrow *
+            ((priceBorrow * calDecimal) / priceLend)) / calDecimal;
+
+        // 清算阙值。
+        uint256 liquidateValue = (poolData.settleAmountLend *
+            (baseDecimal + poolBase.autoLiquidateThreshold)) / baseDecimal;
+
+        // 达到阙值
+        return liquidateValue > borrowValueNow;
+    }
+
+    // 清算
+    function liquidate(uint256 poolId) public validCall {
+        PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
+        PoolDataInfo storage poolData = poolDataInfo[poolId];
+
+        require(block.timestamp > poolBase.settleTime, "time not match");
+        require(poolBase.state == PoolState.EXECUTION, "state invalid");
+
+        address token0 = poolBase.borrowToken;
+        address token1 = poolBase.lendToken;
+
+        // 事件比例
+        uint256 timeRatio = ((poolBase.endTime - poolBase.settleTime) *
+            baseDecimal) / baseYear;
+
+        // 利息。
+        // timeRatio interestRate 都是扩了 baseDecimal
+        uint256 interest = (timeRatio *
+            poolBase.interestRate *
+            poolData.settleAmountLend) /
+            baseDecimal /
+            baseDecimal;
+
+        uint256 lendAmount = poolData.settleAmountLend + interest;
+
+        uint256 sellAmount = (lendAmount * (lendFee + baseDecimal)) /
+            baseDecimal;
+
+        (uint256 amountSell, uint256 amountIn) = _sellExactAmount(
+            swapRouter,
+            token0,
+            token1,
+            sellAmount
+        );
+
+        // 贷款金额。
+        if (amountIn > lendAmount) {
+            // 收取 手续费。
+            uint256 feeAmount = amountIn - lendAmount;
+            _redeem(feeAddress, poolBase.lendToken, feeAmount);
+
+            poolData.liquidationAmountLend = amountIn - feeAmount;
+        } else {
+            poolData.liquidationAmountLend = amountIn;
+        }
+
+        // 借款金额。
+        uint256 remainNowAmount = poolData.settleAmountBorrow - amountSell;
+        // 收取 手续费。
+        uint256 remainBorrowAmount = redeemFees(
+            borrowFee,
+            poolBase.borrowToken,
+            remainNowAmount
+        );
+        poolData.liquidationAmountBorrow = remainBorrowAmount;
+
+        // 状态。
+        poolBase.state = PoolState.LIQUIDATION;
+        emit StateChange(
+            poolId,
+            uint256(PoolState.EXECUTION),
             uint256(poolBase.state)
         );
     }

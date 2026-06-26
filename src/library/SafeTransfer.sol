@@ -33,7 +33,7 @@ contract SafeTransfer {
         return amount;
     }
 
-    // 赎回。 把钱转给某人。 ETH ERC20
+    // 赎回。 池子把钱转给某人。 ETH ERC20
     function _redeem(
         address recipientor,
         address token,
