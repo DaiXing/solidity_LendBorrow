@@ -538,7 +538,7 @@ contract Pool is
         uint256 jpAmount = (userShare * totalJpAmount) / calDecimal;
 
         // 给用户新的token。
-        // todo jpToken 是什么
+        // todo jpToken  是什么
         poolBase.jpCoin.mint(msg.sender, jpAmount);
 
         // todo 为什么用 settleAmountLend lendToken ？
