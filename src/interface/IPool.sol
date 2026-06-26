@@ -25,8 +25,8 @@ interface IPool {
         address lendToken; // 贷款方的token地址
         address borrowToken; // 借款方的token地址
         PoolState state; // 状态
-        IDebtToken spCoin; // sp token 的erc20地址
-        IDebtToken jpCoin; // jp token 的erc20地址
+        IDebtToken spCoin; // supply token。贷款人，获得存款凭证。
+        IDebtToken jpCoin; // jp token 的erc20地址。借款人，获得抵押凭证。
         uint256 autoLiquidateThreshold; // 自动清算的阙值
     }
     // 池子的数据
