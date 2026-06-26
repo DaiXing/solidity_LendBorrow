@@ -39,7 +39,7 @@ contract AddressPrivileges is MultiSignatureClient {
     }
 
     // 读取
-    function getMinter(uint256 index) public returns (bool) {
+    function getMinter(uint256 index) public returns (address) {
         require(index < getMinterLength(), "index invalid");
         return _minters.at(index);
     }
