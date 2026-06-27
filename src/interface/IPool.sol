@@ -31,6 +31,8 @@ interface IPool {
     }
 
     // 池子的数据
+    // 筹款有周期，筹款结束就是结算。 存款、抵押物，比较价值。
+    // finish时，把抵押物卖掉还借款。
     struct PoolDataInfo {
         uint256 settleAmountLend; // 结算时，实际贷款金额
         uint256 settleAmountBorrow; // 结算时，实际借款金额
