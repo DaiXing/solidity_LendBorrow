@@ -105,16 +105,16 @@ contract Pool is
 
     // 创建池子。
     function createPoolInfo(
-        uint256 _settleTime,
-        uint256 _endTime,
-        uint64 _interestRate,
-        uint256 _maxAmount,
-        uint256 _martgegaRate,
-        address _lendToken,
-        address _borrowToken,
-        address _spToken,
-        address _jpToken,
-        uint256 _autoLiquidationThreshold
+        uint256 _settleTime, // 结算时间
+        uint256 _endTime, // 结束时间
+        uint64 _interestRate, // 利率。费率。 单位 1e8
+        uint256 _maxSupply, // 最大供应量
+        uint256 _martgegaRate, // 抵押率。 单位 1e8
+        address _lendToken, // 贷款方的token地址。存借出、借入的钱。
+        address _borrowToken, // 借款方的token地址。存保证金。
+        address _spToken, // Service Provider 。贷款人，获得存款凭证。
+        address _jpToken, // Joint Party      。借款人，获得抵押凭证。
+        uint256 _autoLiquidationThreshold // 自动清算的阙值
     ) public {
         require(_endTime > _settleTime, "time invalid");
         require(_spToken != address(0), "_spToken invalid");
@@ -125,7 +125,7 @@ contract Pool is
                 settleTime: _settleTime, // 结算时间
                 endTime: _endTime, // 结束时间
                 interestRate: _interestRate, // 利率。费率。 单位 1e8
-                maxSupply: _maxAmount, // 最大供应量
+                maxSupply: _maxSupply, // 最大供应量
                 lendSupply: 0, // 贷款人的供应量
                 borrowSupply: 0, // 借款人的供应量
                 martgageRate: _martgegaRate, // 抵押率。 单位 1e8
