@@ -330,7 +330,7 @@ contract Pool is
     // 取款。借款人，拿回保证金。
     // 结束后才能。
     // jpCoin 销毁凭证
-    // borrowToken 退款
+    // borrowToken 取款
     function withdrawBorrow(
         uint256 poolId,
         uint256 jpAmount
@@ -739,11 +739,12 @@ contract Pool is
             baseDecimal;
 
         // 交换。
-        (uint256 amountSell, uint256 amountIn) = _sellExactAmount(
+        // 关键： 把抵押物卖了，作为还款。 把 borrowToken 转成 lendToken 。
+        (uint256 borrowAmountSell, uint256 amountIn) = _sellExactAmount(
             swapRouter,
-            token0,
-            token1,
-            sellAmount
+            token0, // borrowToken
+            token1, // lendToken
+            sellAmount // 需要卖的价值。
         );
 
         require(amountIn >= lendAmount, "amountIn invalid");
@@ -761,13 +762,15 @@ contract Pool is
         }
 
         // 借款金额。
-        uint256 remainNowAmount = poolData.settleAmountBorrow - amountSell;
+        uint256 borrowRemainNowAmount = poolData.settleAmountBorrow -
+            borrowAmountSell;
         // 收取手续费。
         uint256 remainBorrowAmount = redeemFees(
             borrowFee, // 费率。
             poolBase.borrowToken, // 保证金地址。
-            remainNowAmount
+            borrowRemainNowAmount
         );
+        // 注意： 这里是 剩余的 抵押物。
         poolData.finishAmountBorrow = remainBorrowAmount;
 
         // 状态。
