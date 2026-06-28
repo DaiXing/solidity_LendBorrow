@@ -6,11 +6,11 @@ import "./IDebtToken.sol";
 interface IPool {
     // 状态。
     enum PoolState {
-        MATCH, // 匹配
-        EXECUTION, // 执行
-        FINISH, // 完成
-        LIQUIDATION, // 清算
-        UNDONE // 回退
+        MATCH, // 匹配、撮合。
+        EXECUTION, // 执行结算了。
+        FINISH, // 完成。成功了。
+        LIQUIDATION, // 清算。失败了。
+        UNDONE // 未执行。估计没有金额。
     }
 
     // 池子的基本信息
@@ -33,11 +33,12 @@ interface IPool {
     // 池子的数据
     // 筹款有周期，筹款结束就是结算。 存款、抵押物，比较价值。
     // finish时，把抵押物卖掉还借款。
+    // borrow ，乘以了抵押率系数。
     struct PoolDataInfo {
         uint256 settleAmountLend; // 结算时，实际贷款金额
         uint256 settleAmountBorrow; // 结算时，实际借款金额
-        uint256 finishAmountLend; // 完成时，实际贷款金额
-        uint256 finishAmountBorrow; // 完成时，实际借款金额
+        uint256 finishAmountLend; // 完成时，实际贷款金额。扣除手续费
+        uint256 finishAmountBorrow; // 完成时，实际借款金额。扣除手续费
         uint256 liquidationAmountLend; // 清算时，实际贷款金额
         uint256 liquidationAmountBorrow; // 清算时，实际借款金额
     }

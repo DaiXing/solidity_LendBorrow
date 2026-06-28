@@ -256,7 +256,6 @@ contract Pool is
         PoolDataInfo storage poolData = poolDataInfo[poolId];
         BorrowInfo storage borrowInfo = userBorrowInfo[msg.sender][poolId];
 
-        // todo 借款人，为啥要给合约？
         // 用户存入抵押品，才能借款。 抵押品价值 > 借款金额（通常超额抵押 150%+）
         // 接收用户的金额。 ETH 或 ERC20
         uint256 amount = getPayableAmount(poolBase.borrowToken, stakeAmount);
@@ -282,6 +281,8 @@ contract Pool is
 
     // 取款。本金，利息
     // 结束后才能。
+    // lendToken 取款
+    // spCoin 销毁凭证
     function withdrawLend(
         uint256 poolId,
         uint256 amount
@@ -328,6 +329,8 @@ contract Pool is
 
     // 取款。借款人，拿回保证金。
     // 结束后才能。
+    // jpCoin 销毁凭证
+    // borrowToken 退款
     function withdrawBorrow(
         uint256 poolId,
         uint256 jpAmount
@@ -416,6 +419,7 @@ contract Pool is
         // 用户金额 = 剩余lend金额 * 用户占比
         uint256 refundAmount = (leftLendAmount * userShare) / calDecimal;
 
+        // 贷款人，存的 lendToken ，退的也是 lendToken
         // 转给用户。 ETH ERC20
         _redeem(msg.sender, poolBase.lendToken, refundAmount);
 
@@ -460,6 +464,7 @@ contract Pool is
         // 用户金额 = 剩余lend金额 * 用户占比
         uint256 refundAmount = (leftAmount * userShare) / calDecimal;
 
+        // 保证金，存的 borrowToken ，退的也是 borrowToken
         // 转给用户。 ETH ERC20
         _redeem(msg.sender, poolBase.borrowToken, refundAmount);
 
@@ -538,15 +543,13 @@ contract Pool is
         uint256 jpAmount = (userShare * totalJpAmount) / calDecimal;
 
         // 给用户新的token。
-        // todo jpToken  是什么
         poolBase.jpCoin.mint(msg.sender, jpAmount);
 
-        // todo 为什么用 settleAmountLend lendToken ？
+        // 双方的钱，都使用 lendToken
         uint256 borrowAmount = (userShare * poolData.settleAmountLend) /
             calDecimal;
 
-        // todo 核心逻辑： 贷款人，把钱存入 lendToken 。借款人，从 lendToken 获得钱。
-        // todo 结算后，借款人才能拿到借款？
+        // 核心逻辑： 贷款人，把钱存入 lendToken 。借款人，从 lendToken 获得钱。
         _redeem(msg.sender, poolBase.lendToken, borrowAmount);
 
         // 只能领取1次。
@@ -629,6 +632,8 @@ contract Pool is
     }
 
     // 结算。
+    // 计算 lend borrow ，价值达到平衡。
+    // 多余的，需要退回。
     function settle(uint256 poolId) public validCall stateMatch(poolId) {
         PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
         PoolDataInfo storage poolData = poolDataInfo[poolId];
@@ -642,28 +647,36 @@ contract Pool is
             uint256 lendPrice = prices[0];
             uint256 borrowPrice = prices[1];
 
+            // 价格比率。 把lend、borrow关联起来。
+            // 抵押物相当于lend的价值。
+            uint256 priceRatio = (borrowPrice * calDecimal) / lendPrice;
+
             // 保证金价值 = 保证金数量 * 保证金价格。
-            // todo 为啥 borrowPrice/lendPrice ?
-            uint256 borrowValue = (poolBase.borrowSupply *
-                ((borrowPrice * calDecimal) / lendPrice)) / calDecimal;
+            uint256 guessLendValue1 = (poolBase.borrowSupply * priceRatio) /
+                calDecimal;
 
             // 稳定币价值
-            // todo 为啥 这样算？
-            uint256 actualValue = (borrowValue * baseDecimal) /
+            // 上一步，已经把 lend borrow 关联起来了。
+            // 再算 抵押率。
+            uint256 guessLendValue2 = (guessLendValue1 * baseDecimal) /
                 poolBase.martgageRate;
 
+            // 前面已经算了 贷款和抵押物 ，后面比较差值。
+            // 目标： 让 lend、borrow 价值相等。
+
             // 贷款 > 借款
-            if (poolBase.lendSupply > actualValue) {
-                // todo 为啥这样设置 ？
-                poolData.settleAmountLend = actualValue;
+            if (poolBase.lendSupply > guessLendValue2) {
+                // lend太多了，后续要退回。
+                poolData.settleAmountLend = guessLendValue2;
                 poolData.settleAmountBorrow = poolBase.borrowSupply;
             }
             // 贷款 < 借款
             else {
+                // lend太少，抵押物太多。抵押物需要退回。
                 poolData.settleAmountLend = poolBase.lendSupply;
                 poolData.settleAmountBorrow =
                     (poolBase.lendSupply * poolBase.martgageRate) /
-                    ((borrowPrice * baseDecimal) / lendPrice);
+                    priceRatio;
             }
 
             // 改状态。
@@ -691,6 +704,9 @@ contract Pool is
     }
 
     // 结束。
+    // lend 加上利息
+    // lend 扣除手续费
+    // borrow 扣除手续费
     function finish(uint256 poolId) public validCall {
         PoolBaseInfo storage poolBase = poolBaseInfo[poolId];
         PoolDataInfo storage poolData = poolDataInfo[poolId];
@@ -718,7 +734,7 @@ contract Pool is
         uint256 lendAmount = poolData.settleAmountLend + interest;
 
         // lendFee 已经是乘以了 baseDecimal
-        // 销售金额 = 贷款金额 * (1+贷款费率)
+        // 销售金额 = 贷款金额 * (1+手续费率)
         uint256 sellAmount = (lendAmount * (lendFee + baseDecimal)) /
             baseDecimal;
 
@@ -908,7 +924,7 @@ contract Pool is
         address token0 = poolBase.borrowToken;
         address token1 = poolBase.lendToken;
 
-        // 事件比例
+        // 时间比例
         uint256 timeRatio = ((poolBase.endTime - poolBase.settleTime) *
             baseDecimal) / baseYear;
 
@@ -920,6 +936,7 @@ contract Pool is
             baseDecimal /
             baseDecimal;
 
+        // 本金+利息
         uint256 lendAmount = poolData.settleAmountLend + interest;
 
         uint256 sellAmount = (lendAmount * (lendFee + baseDecimal)) /
